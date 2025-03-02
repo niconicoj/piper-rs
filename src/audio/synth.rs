@@ -4,6 +4,7 @@ use rayon::prelude::*;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use std::any::Any;
 use std::collections::HashMap;
+use std::io::{Seek, Write};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -208,6 +209,39 @@ impl PiperSpeechSynthesizer {
             self.0.audio_output_info()?.sample_width.try_into().unwrap(),
         )?)
     }
+
+    pub fn synthesize_to_buffer<W: Write + Seek>(
+        &self,
+        writer: W,
+        text: String,
+        output_config: Option<AudioOutputConfig>,
+    ) -> PiperResult<()> {
+        let mut samples: Vec<f32> = Vec::new();
+        for result in self.synthesize_parallel(text, output_config)? {
+            match result {
+                Ok(ws) => {
+                    samples.append(&mut ws.into_vec());
+                }
+                Err(e) => return Err(e),
+            };
+        }
+        if samples.is_empty() {
+            return Err(PiperError::OperationError(
+                "No speech data to write".to_string(),
+            ));
+        }
+        let audio = AudioSamples::from(samples);
+
+        audio::write_wave_samples_to_buffer(
+            writer,
+            audio.to_i16_vec().iter(),
+            self.0.audio_output_info()?.sample_rate as u32,
+            self.0.audio_output_info()?.num_channels.try_into().unwrap(),
+            self.0.audio_output_info()?.sample_width.try_into().unwrap(),
+        )?;
+        Ok(())
+    }
+
     #[inline(always)]
     pub fn clone_model(&self) -> Arc<dyn PiperModel + Send + Sync> {
         Arc::clone(&self.0)
