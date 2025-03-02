@@ -8,8 +8,10 @@ use serde::Deserialize;
 mod audio;
 mod core;
 pub use audio::synth;
-use core::{Audio, AudioInfo, AudioSamples, AudioStreamIterator, Phonemes, PiperModel};
-pub use core::{PiperAudioResult, PiperError, PiperResult};
+use core::{Audio, AudioInfo, AudioSamples, AudioStreamIterator, Phonemes};
+pub use core::{PiperAudioResult, PiperError, PiperModel as CorePiperModel, PiperResult};
+
+pub type PiperModel = Arc<dyn CorePiperModel + Send + Sync>;
 
 use std::any::Any;
 use std::borrow::Cow;
@@ -72,7 +74,7 @@ fn create_inference_session(model_path: &Path) -> Result<Session, ort::Error> {
         .commit_from_file(model_path)
 }
 
-pub fn from_config_path(config_path: &Path) -> PiperResult<Arc<dyn PiperModel + Send + Sync>> {
+pub fn from_config_path(config_path: &Path) -> PiperResult<Arc<dyn CorePiperModel + Send + Sync>> {
     let (config, synth_config) = load_model_config(config_path)?;
     if config.streaming.unwrap_or_default() {
         Ok(Arc::new(VitsStreamingModel::from_config(
@@ -369,7 +371,7 @@ impl VitsModelCommons for VitsModel {
     }
 }
 
-impl PiperModel for VitsModel {
+impl CorePiperModel for VitsModel {
     fn phonemize_text(&self, text: &str) -> PiperResult<Phonemes> {
         self.do_phonemize_text(text)
     }
@@ -542,7 +544,7 @@ impl VitsModelCommons for VitsStreamingModel {
     }
 }
 
-impl PiperModel for VitsStreamingModel {
+impl CorePiperModel for VitsStreamingModel {
     fn phonemize_text(&self, text: &str) -> PiperResult<Phonemes> {
         self.do_phonemize_text(text)
     }
